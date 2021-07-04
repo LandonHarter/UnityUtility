@@ -17,7 +17,8 @@ public class UnityUtilityEditor : EditorWindow
 
     private static List<string> requiredPackages = new List<string>() { 
         "com.unity.animation.rigging", 
-        "com.unity.render-pipelines.universal"
+        "com.unity.render-pipelines.universal",
+        "com.unity.textmeshpro",
      };
 
     [MenuItem("Unity Utility/Install or Update Packages", priority = 0)]
