@@ -2,64 +2,112 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
+using UnityEditor.PackageManager.Requests;
+using UnityEditor.PackageManager;
 
 public class UnityUtilityEditor : EditorWindow
 {
 
-    public static UnityUtilityEditorOptions options;
-    private static Object options_O;
+    private static bool Installing;
+    private static AddRequest Request;
+    private static ListRequest ListRequest;
+    private static string currentInstallingPackage;
 
-    void Awake()
+    private static List<string> pendingPackagesToInstall = new List<string>();
+
+    private static List<string> requiredPackages = new List<string>() { 
+        "com.unity.animation.rigging", 
+        "com.unity.render-pipelines.universal"
+     };
+
+    [MenuItem("Unity Utility/Install or Update Packages", priority = 0)]
+    public static void InstallRequiredPackages()
     {
-        if (options == null) options = FindObjectOfType<UnityUtilityEditorOptions>();
+        foreach (string package in requiredPackages)
+        {
+            InstallPackage(package);
+        }
     }
 
-    void Update()
+    private static void InstallPackage(string packageName)
     {
-        if (EditorGUIUtility.GetObjectPickerObject() != null)
+        if (Installing)
         {
-            Object obj = EditorGUIUtility.GetObjectPickerObject();
+            pendingPackagesToInstall.Add(packageName);
+            return;
+        }
 
-            if (obj.GetType().Equals(typeof(UnityUtilityEditorOptions)) && options != obj)
+        currentInstallingPackage = packageName;
+
+        Installing = true;
+
+        ListRequest = Client.List();
+        EditorApplication.update += CheckPackageList;
+
+        Request = Client.Add(packageName);
+        EditorApplication.update += PackageInstallationProgress;
+    }
+
+    private static void UninstallPackage(string packageName)
+    {
+        Client.Remove(packageName);
+    }
+
+    private static void PackageInstallationProgress()
+    {
+        if (Request.IsCompleted)
+        {
+            if (Request.Status == StatusCode.Success)
+                Debug.Log("Installed: " + Request.Result.packageId);
+            else if (Request.Status >= StatusCode.Failure)
+                Debug.Log(Request.Error.message);
+
+            currentInstallingPackage = string.Empty;
+            EditorApplication.update -= PackageInstallationProgress;
+            Installing = false;
+
+            if (pendingPackagesToInstall.Count > 0)
             {
-                options = (UnityUtilityEditorOptions)obj;
-                options_O = null;
+                string packageName = pendingPackagesToInstall[0];
+                pendingPackagesToInstall.RemoveAt(0);
+                InstallPackage(packageName);
             }
         }
     }
 
-    [MenuItem("Unity Utility/Setup", priority = 0)]
-    public static void OpenSettings()
+    private static void CheckPackageList()
     {
-        GetWindow<UnityUtilityEditor>();
-    }
-
-    void OnGUI()
-    {
-        if (GUILayout.Button("Choose Settings Prefab"))
+        if (ListRequest.IsCompleted)
         {
-            EditorGUIUtility.ShowObjectPicker<UnityUtilityEditorOptions>(options_O, false, "", 0);
+            if (Request.Status == StatusCode.Success)
+                foreach (var package in ListRequest.Result)
+                {
+                    if (package.name == currentInstallingPackage)
+                    {
+                        Debug.Log(currentInstallingPackage + " is already installed.");
+                        return;
+                    }
+                }
+            else if (Request.Status >= StatusCode.Failure)
+            {
+                Debug.Log(Request.Error.message);
+                Installing = false;
+            }
         }
+
+        EditorApplication.update -= CheckPackageList;
     }
 
     [MenuItem("Unity Utility/Create Terrain")]
-    public static void CreateTerrain()
+    private static void CreateTerrain()
     {
         GameObject terrain = new GameObject();
         terrain.name = "New Terrain";
         terrain.AddComponent<MeshFilter>();
-        MeshRenderer mr = terrain.AddComponent<MeshRenderer>();
+        terrain.AddComponent<MeshRenderer>();
         TerrainGenerator g = terrain.AddComponent<TerrainGenerator>();
-        mr.sharedMaterial = options.terrainMaterial;
         g.enabled = true;
         g.GenerateMesh();
     }
 
-}
-
-[CreateAssetMenu(menuName = "Unity Utility/Settings")]
-public class UnityUtilityEditorOptions : ScriptableObject {
-
-    public Material terrainMaterial;
-    
 }
